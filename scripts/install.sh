@@ -174,6 +174,20 @@ command -v systemctl &>/dev/null || die "systemd is required but not found."
 command -v "$PYTHON"  &>/dev/null || die "$PYTHON is required but not found."
 command -v git        &>/dev/null || die "git is required but not found."
 
+# ── Detect existing installation ──────────────────────────────────────────────
+# Show a clear banner when NAP is already installed so the user knows this is
+# a repair/upgrade run, not a first install.  All steps remain idempotent.
+if systemctl is-active --quiet "$BACKEND_SERVICE" 2>/dev/null && \
+   [[ -f "$INSTALL_DIR/venv/bin/uvicorn" ]] && \
+   [[ -f "$CONFIG_DIR/config.json" ]] && \
+   [[ -f "$SYSTEMD_DIR/$BACKEND_SERVICE" ]]; then
+    echo -e "${GREEN}[NAP]${NC} Existing installation detected – running in refresh/repair mode."
+    echo -e "      Version : $(cat $INSTALL_DIR/VERSION 2>/dev/null || echo 'unknown')"
+    echo -e "      Backend : $(systemctl show -p MainPID --value $BACKEND_SERVICE) (PID)"
+    echo -e "      Config  : $CONFIG_DIR/config.json"
+    echo
+fi
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Step 1 – System packages
 # ──────────────────────────────────────────────────────────────────────────────
@@ -320,6 +334,78 @@ fi
 
 chown -R "$NAP_USER:$NAP_GROUP" "$VENV_DIR"
 success "Python environment ready at $VENV_DIR"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Step 5b – Plexamp Headless
+# Plexamp is not in apt; it must be downloaded from plexamp.plex.tv.
+# The binary is extracted to /opt/plexamp.  A one-time interactive auth step
+# (see docs/INSTALL.md §7) is still required before the service can start.
+# ──────────────────────────────────────────────────────────────────────────────
+info "--- Step 5b: Plexamp Headless ---"
+
+# 1. Ensure Node.js is present (Plexamp is an Electron/Node app)
+if ! command -v node &>/dev/null; then
+    if [[ $OPT_NO_APT -eq 0 ]]; then
+        info "Node.js not found – installing from NodeSource (LTS)..."
+        # Fetch and run the NodeSource setup script for Node 20 LTS
+        NODESOURCE_SCRIPT="$(mktemp)"
+        curl -fsSL "https://deb.nodesource.com/setup_20.x" -o "$NODESOURCE_SCRIPT"
+        bash "$NODESOURCE_SCRIPT"
+        rm -f "$NODESOURCE_SCRIPT"
+        apt-get install -y --no-install-recommends nodejs
+        success "Node.js $(node --version) installed."
+    else
+        warn "Node.js not found and --no-apt is set.  Plexamp requires Node.js."
+        warn "Install it manually: https://nodejs.org"
+    fi
+else
+    success "Node.js $(node --version) already installed."
+fi
+
+# 2. Install Plexamp binaries if not already present
+PLEXAMP_BIN="/opt/plexamp/js/index.js"
+if [[ -f "$PLEXAMP_BIN" ]]; then
+    success "Plexamp already installed at /opt/plexamp"
+else
+    info "Fetching Plexamp Headless download URL..."
+    PLEXAMP_URL=""
+    # Query the official Plex version manifest
+    VERSION_JSON="$(curl -fsSL --max-time 10 \
+        'https://plexamp.plex.tv/headless/version.json' 2>/dev/null || true)"
+    if [[ -n "$VERSION_JSON" ]]; then
+        PLEXAMP_URL="$(printf '%s' "$VERSION_JSON" | \
+            "$PYTHON" -c "import sys,json; d=json.load(sys.stdin); print(d.get('updateUrl',''))" \
+            2>/dev/null || true)"
+    fi
+
+    if [[ -z "$PLEXAMP_URL" ]]; then
+        warn "Could not automatically determine the Plexamp download URL."
+        warn "Download manually from https://plexamp.com/headless/ and extract to /opt/plexamp"
+        warn "Then run: sudo -u plexamp node /opt/plexamp/js/index.js"
+        warn "Then start: sudo systemctl start plexamp.service"
+    else
+        info "Downloading Plexamp: $PLEXAMP_URL"
+        PLEXAMP_TARBALL="$(mktemp /tmp/plexamp.XXXXXX.tar.bz2)"
+        if curl -fsSL --max-time 120 --progress-bar -o "$PLEXAMP_TARBALL" "$PLEXAMP_URL"; then
+            info "Extracting Plexamp to /opt/plexamp ..."
+            # Extract as the plexamp user; strip the top-level directory from the tarball
+            mkdir -p /opt/plexamp
+            tar -xjf "$PLEXAMP_TARBALL" -C /opt/plexamp --strip-components=1
+            rm -f "$PLEXAMP_TARBALL"
+            chown -R plexamp:audio /opt/plexamp
+            success "Plexamp extracted to /opt/plexamp"
+            echo
+            echo -e "${YELLOW}[NOTICE]${NC} Plexamp requires a one-time interactive auth step:"
+            echo -e "         sudo -u plexamp node /opt/plexamp/js/index.js"
+            echo -e "         Follow the on-screen claim URL, then Ctrl+C and:"
+            echo -e "         sudo systemctl start plexamp.service"
+            echo
+        else
+            rm -f "$PLEXAMP_TARBALL"
+            warn "Plexamp download failed.  Install manually from https://plexamp.com/headless/"
+        fi
+    fi
+fi
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Step 6 – Default configuration file (never overwrites existing config)
