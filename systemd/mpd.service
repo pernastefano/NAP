@@ -1,0 +1,38 @@
+[Unit]
+Description=Music Player Daemon (NAP – FLAC Web Radio)
+Documentation=man:mpd(1)
+
+# Only meaningful as part of the MPD audio target.
+# If the target stops, this service stops.
+PartOf=audio-mpd.target
+After=sound.target network-online.target audio-mpd.target
+
+[Service]
+Type=notify
+User=mpd
+Group=audio
+
+# Runtime directories created automatically (systemd >=235)
+RuntimeDirectory=mpd
+StateDirectory=mpd
+LogsDirectory=mpd
+
+ExecStart=/usr/bin/mpd --no-daemon /etc/mpd.conf
+ExecReload=/bin/kill -HUP $MAINPID
+
+# Restart on unexpected failure, but not on clean exit or user stop-request
+Restart=on-failure
+RestartSec=3
+
+# Tight resource limits – MPD is the sole audio consumer when active
+LimitNOFILE=8192
+
+# Hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/mpd /run/mpd /var/log/mpd
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=audio-mpd.target

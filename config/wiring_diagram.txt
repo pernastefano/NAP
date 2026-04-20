@@ -1,0 +1,203 @@
+
+NAP – Hardware Wiring Diagram
+Raspberry Pi 4B • BCM numbering
+════════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         RASPBERRY PI 4  (40-pin header)                     │
+│                                                                             │
+│  3V3 [1]  [2] 5V  ──────────────────────────────────── 5V rail             │
+│  SDA [3]  [4] 5V  ──────────────────────────────────── 5V rail             │
+│  SCL [5]  [6] GND ──────────────────────────────────── GND rail            │
+│      [7]  [8]                                                               │
+│  GND [9]  [10]                                                              │
+│ G17 [11]  [12] G18                                                          │
+│ G27 [13]  [14] GND                                                          │
+│ G22 [15]  [16] G23                                                          │
+│  3V3[17]  [18] G24                                                          │
+│      [19]  [20] GND                                                         │
+│      [21]  [22] G25                                                         │
+│      [23]  [24]                                                             │
+│  GND[25]  [26]                                                              │
+│  SDA[27]  [28] SCL  (I2C0 – not used)                                      │
+│      [29]  [30] GND                                                         │
+│      [31]  [32]                                                             │
+│      [33]  [34] GND                                                         │
+│      [35]  [36] G16                                                         │
+│      [37]  [38]                                                             │
+│  GND[39]  [40]                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+
+════════════════════════════════════════════════════════════════════════════════
+ 1. LCD – HD44780 + PCF8574 I2C backpack
+════════════════════════════════════════════════════════════════════════════════
+
+ Pi header                PCF8574 backpack          HD44780
+ ─────────                ────────────────          ───────
+ pin 3  (SDA, GPIO2) ───── SDA              (I2C)
+ pin 5  (SCL, GPIO3) ───── SCL              (I2C)
+ pin 1  (3.3V)   ──[opt]── (logic VCC; most boards use 5V)
+ pin 2  (5V)     ─────────  VCC  ─────────────────  VDD (pin 2)
+ pin 6  (GND)    ─────────  GND  ─────────────────  VSS (pin 1)
+                                               ────  V0  ─── wiper of 10kΩ pot
+                                                     10kΩ between 5V and GND
+
+ I2C address: 0x27 (A0=A1=A2=0)  or  0x3F (PCF8574A variant)
+ Check with:  i2cdetect -y 1
+
+ NOTE: 4.7 kΩ pull-ups to 3.3 V on SDA and SCL are required.
+       Most PCF8574 boards include them.
+
+
+════════════════════════════════════════════════════════════════════════════════
+ 2. Rotary Encoder (KY-040 / EC11)
+════════════════════════════════════════════════════════════════════════════════
+
+ Encoder pin  External filter          Pi header
+ ────────────  ─────────────          ──────────────────────────────────────
+              ┌── 10 kΩ ──┬──────────  pin 11  (GPIO17 / encoder_a)
+    CLK ──────┘           │
+                        100nF
+                          │
+                         GND ─────────  pin 14  (GND)
+
+              ┌── 10 kΩ ──┬──────────  pin 12  (GPIO18 / encoder_b)
+    DT  ──────┘           │
+                        100nF
+                          │
+                         GND
+
+    SW  ─────────────────────────────  pin 13  (GPIO27 / encoder_btn)
+    +   ─────────────────────────────  pin 17  (3.3V)
+    GND ─────────────────────────────  pin 14  (GND)
+
+ Internal PUD_UP on GPIO17, GPIO18, GPIO27.
+ RC filter: fc = 1/(2π × 10kΩ × 100nF) ≈ 159 Hz  → rejects bounce spikes.
+
+
+════════════════════════════════════════════════════════════════════════════════
+ 3. Power Button
+════════════════════════════════════════════════════════════════════════════════
+
+ Button (NO)              Pi header
+ ───────────              ──────────────────────────────────────────────────
+ Terminal A ─────────────  pin 15  (GPIO22 / power_btn)
+ Terminal B ─────────────  pin 14  (GND)
+
+ Optional HW debounce: 100 nF between GPIO22 and GND.
+
+ Internal PUD_UP → pin reads HIGH at rest (button open), LOW when pressed.
+
+ Behaviour:
+   Press < 600 ms  → on_power_short()  → toggle audio ON/OFF
+   Press ≥ 600 ms  → on_power_long()   → sudo systemctl poweroff
+
+
+════════════════════════════════════════════════════════════════════════════════
+ 4. Action Buttons (play/pause, next, previous)
+════════════════════════════════════════════════════════════════════════════════
+
+ Button       Terminal A          Terminal B    Pi header
+ ──────────   ──────────          ──────────    ──────────────────────────────
+ Play/Pause ──  direct ────────────── GND ────  pin 16 (GPIO23)  [pin 14 GND]
+ Next       ──  direct ────────────── GND ────  pin 18 (GPIO24)  [pin 20 GND]
+ Previous   ──  direct ────────────── GND ────  pin 22 (GPIO25)  [pin 25 GND]
+
+ Internal PUD_UP on each pin. 100 nF to GND optional.
+ Callbacks:  on_button("play_pause" | "next" | "previous",  long: bool)
+
+
+════════════════════════════════════════════════════════════════════════════════
+ 5. IR Receiver (TSOP4838 / VS1838B)
+════════════════════════════════════════════════════════════════════════════════
+
+ TSOP4838 (facing dome, left→right: OUT, GND, VCC)
+
+             100Ω              100µF + 100nF
+ 3.3V ───────┤├───────┬──────────┤├────── GND
+                      │   (bulk decoupling on VCC)
+                    VCC (pin 3)
+                    GND (pin 2) ───── GND rail
+                    OUT (pin 1) ──── 1kΩ ─────┬───── pin 36 (GPIO16)
+                                              │
+                                            100nF
+                                              │
+                                             GND
+
+ GPIO16 is managed by kernel gpio-ir overlay.
+ DO NOT configure GPIO16 with gpio.setup() from Python.
+
+ /boot/firmware/config.txt:
+   dtoverlay=gpio-ir,gpio_pin=16
+
+ Pull: TSOP4838 has internal pull-up to VCC on OUT; no Pi pull needed.
+ Output: active LOW (idle HIGH, burst pulls LOW).
+
+ Kernel presents events as:  /dev/lircX  +  /dev/input/eventX
+ udev rule (99-nap.rules) symlinks to:  /dev/input/ir-keys
+ Python reads via evdev EV_KEY KEY_DOWN events.
+
+
+════════════════════════════════════════════════════════════════════════════════
+ 6. Pull-up / Pull-down Decision Matrix
+════════════════════════════════════════════════════════════════════════════════
+
+ Signal         Wiring         Pull type       Why
+ ─────────────  ─────────────  ──────────────  ──────────────────────────────
+ Encoder A/B    Active LOW     Internal PUD_UP All GPIOs idle HIGH at 3.3V.
+ Encoder BTN    Active LOW     Internal PUD_UP Safe: short to GND only.
+ Power button   Active LOW     Internal PUD_UP Standard for NO buttons.
+ Action buttons Active LOW     Internal PUD_UP Consistent convention.
+ IR data (OUT)  Active LOW     None            TSOP has internal pull-up.
+ I2C SDA/SCL    Open-drain     4.7 kΩ to 3.3V  I2C spec; on backpack board.
+
+ External resistors used:
+   RC filter on encoder (10 kΩ + 100 nF per channel) – not a pull per se;
+   this is a low-pass filter; DC bias is still provided by PUD_UP.
+
+
+════════════════════════════════════════════════════════════════════════════════
+ 7. Complete GPIO Summary
+════════════════════════════════════════════════════════════════════════════════
+
+ BCM  Phys  Signal           Device            Direction  Pull
+ ───  ────  ───────────────  ────────────────  ─────────  ──────────────────
+  2    3    SDA1             LCD PCF8574       I2C        4.7kΩ (on board)
+  3    5    SCL1             LCD PCF8574       I2C        4.7kΩ (on board)
+ 17   11    encoder_a        Rotary encoder    INPUT      PUD_UP + 10kΩ+100nF
+ 18   12    encoder_b        Rotary encoder    INPUT      PUD_UP + 10kΩ+100nF
+ 27   13    encoder_btn      Encoder switch    INPUT      PUD_UP
+ 22   15    power_btn        Power button      INPUT      PUD_UP
+ 23   16    action_btn1      Play/Pause btn    INPUT      PUD_UP
+ 24   18    action_btn2      Next button       INPUT      PUD_UP
+ 25   22    action_btn3      Previous button   INPUT      PUD_UP
+ 16   36    ir_data          IR receiver       kernel     Internal (TSOP)
+
+
+════════════════════════════════════════════════════════════════════════════════
+ 8. I2C Conflict Check
+════════════════════════════════════════════════════════════════════════════════
+
+ Bus I2C-1 devices:
+   0x27  LCD PCF8574        (or 0x3F for PCF8574A variant)
+
+ If using an I2S DAC HAT that also uses I2C (e.g. HiFiBerry DAC+ at 0x4C):
+   Run  i2cdetect -y 1  after boot to confirm no address collision.
+   No conflicts with default PCF8574 address.
+
+
+════════════════════════════════════════════════════════════════════════════════
+ 9. GPIO18 Conflict Warning
+════════════════════════════════════════════════════════════════════════════════
+
+ GPIO18 = PCM_CLK (I2S clock).
+
+ ⚠  If your DAC uses I2S (e.g. HiFiBerry DAC+, Allo Boss):
+    GPIO18 is claimed by the I2S kernel driver at boot.
+    Move encoder_b to a free pin (e.g. GPIO23 or GPIO20) and update:
+      - PinConfig.encoder_b in hardware_input.py
+      - This wiring diagram
+      - The GPIO table in config/wiring.conf
+
+ USB DACs are unaffected.

@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NAP – Network Audio Player</title>
+  <style>
+    /* ── Reset & tokens ───────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0f1117;
+      --surface:  #1a1d27;
+      --border:   #2d3148;
+      --accent:   #5b6ef5;
+      --accent-h: #7b8ef7;
+      --danger:   #e05a5a;
+      --success:  #4caf80;
+      --warn:     #f5a623;
+      --text:     #e2e4f0;
+      --muted:    #8890b0;
+      --radius:   10px;
+      --gap:      16px;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      font-size: 14px;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Layout ───────────────────────────────────────────────────────────── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 24px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    header h1 { font-size: 18px; font-weight: 600; letter-spacing: .03em; }
+    header h1 span { color: var(--accent); }
+
+    #status-pill {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 12px; color: var(--muted);
+    }
+    #ws-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--danger); transition: background .3s;
+    }
+    #ws-dot.connected { background: var(--success); }
+
+    main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: var(--gap);
+      padding: var(--gap) 24px;
+      max-width: 1200px;
+      width: 100%;
+      margin: 0 auto;
+    }
+
+    /* ── Cards ────────────────────────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .card h2 {
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: var(--muted);
+    }
+
+    /* Logs card spans full width */
+    .card.wide { grid-column: 1 / -1; }
+
+    /* ── Buttons ──────────────────────────────────────────────────────────── */
+    button {
+      cursor: pointer;
+      border: none;
+      border-radius: 6px;
+      padding: 8px 14px;
+      font-size: 13px;
+      font-weight: 500;
+      transition: filter .15s, opacity .15s;
+    }
+    button:disabled { opacity: .4; cursor: default; }
+    button:not(:disabled):hover { filter: brightness(1.15); }
+    button:not(:disabled):active { filter: brightness(.9); }
+
+    .btn-primary   { background: var(--accent);  color: #fff; }
+    .btn-secondary { background: var(--border);  color: var(--text); }
+    .btn-danger    { background: var(--danger);  color: #fff; }
+    .btn-success   { background: var(--success); color: #fff; }
+    .btn-warn      { background: var(--warn);    color: #111; }
+    .btn-icon      { background: var(--border);  color: var(--text);
+                      width: 36px; height: 36px; padding: 0;
+                      font-size: 16px; display: inline-flex;
+                      align-items: center; justify-content: center; }
+
+    /* ── Source grid ──────────────────────────────────────────────────────── */
+    #source-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .src-btn {
+      padding: 14px 8px;
+      border-radius: 8px;
+      background: var(--border);
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 600;
+      display: flex; flex-direction: column;
+      align-items: center; gap: 6px;
+      border: 2px solid transparent;
+      transition: border-color .2s, background .2s;
+    }
+    .src-btn .icon { font-size: 22px; }
+    .src-btn.active {
+      border-color: var(--accent);
+      background: color-mix(in srgb, var(--accent) 15%, var(--surface));
+    }
+    .src-btn:not(:disabled):hover { background: color-mix(in srgb, var(--accent) 10%, var(--border)); }
+
+    #now-playing {
+      font-size: 13px; color: var(--muted);
+      min-height: 18px;
+    }
+    #switch-count {
+      font-size: 11px; color: var(--muted);
+    }
+
+    /* ── Playback controls ────────────────────────────────────────────────── */
+    #playback-row {
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    }
+
+    /* ── Volume ───────────────────────────────────────────────────────────── */
+    #vol-row {
+      display: flex; align-items: center; gap: 10px;
+    }
+    input[type=range] {
+      flex: 1;
+      accent-color: var(--accent);
+      height: 4px;
+      cursor: pointer;
+    }
+    #vol-label { font-size: 12px; color: var(--muted); min-width: 30px; text-align: right; }
+
+    /* ── Config form ──────────────────────────────────────────────────────── */
+    .field { display: flex; flex-direction: column; gap: 4px; }
+    .field label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+    .field input, .field select {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 10px;
+      color: var(--text);
+      font-size: 13px;
+      width: 100%;
+    }
+    .field input:focus, .field select:focus {
+      outline: 2px solid var(--accent);
+    }
+    #config-status { font-size: 12px; min-height: 16px; }
+
+    /* ── Logs ─────────────────────────────────────────────────────────────── */
+    #log-toolbar {
+      display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+    }
+    #log-filter { font-size: 12px; }
+    #log-scroll {
+      font-family: 'Cascadia Code', 'Fira Mono', monospace;
+      font-size: 11px;
+      line-height: 1.5;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px;
+      height: 260px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .log-line { display: block; }
+    .log-line.ERROR, .log-line.CRITICAL { color: #ff7070; }
+    .log-line.WARNING { color: var(--warn); }
+    .log-line.INFO    { color: var(--text); }
+    .log-line.DEBUG   { color: var(--muted); }
+
+    /* ── OTA ──────────────────────────────────────────────────────────────── */
+    #ota-status {
+      font-size: 12px; color: var(--muted); min-height: 16px;
+      word-break: break-all;
+    }
+    #ota-progress {
+      height: 4px; border-radius: 2px;
+      background: var(--border); overflow: hidden;
+      display: none;
+    }
+    #ota-bar {
+      height: 100%; width: 0%;
+      background: var(--accent);
+      transition: width 0.3s;
+    }
+
+    /* ── Toast ────────────────────────────────────────────────────────────── */
+    #toast {
+      position: fixed; bottom: 20px; right: 20px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 10px 18px;
+      font-size: 13px;
+      opacity: 0;
+      transform: translateY(10px);
+      transition: opacity .25s, transform .25s;
+      pointer-events: none;
+      z-index: 100;
+      max-width: 320px;
+    }
+    #toast.show { opacity: 1; transform: translateY(0); }
+    #toast.ok   { border-left: 3px solid var(--success); }
+    #toast.err  { border-left: 3px solid var(--danger); }
+    #toast.warn { border-left: 3px solid var(--warn); }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>N<span>A</span>P</h1>
+  <div id="status-pill">
+    <div id="ws-dot"></div>
+    <span id="ws-label">connecting…</span>
+  </div>
+</header>
+
+<main>
+
+  <!-- ── Source card ──────────────────────────────────────────────────────── -->
+  <div class="card" id="card-source">
+    <h2>Audio Source</h2>
+    <div id="source-grid">
+      <button class="src-btn" data-source="mpd"       onclick="switchSource('mpd')">
+        <span class="icon">🎵</span> MPD
+      </button>
+      <button class="src-btn" data-source="airplay"   onclick="switchSource('airplay')">
+        <span class="icon">📡</span> AirPlay
+      </button>
+      <button class="src-btn" data-source="plexamp"   onclick="switchSource('plexamp')">
+        <span class="icon">🎬</span> Plexamp
+      </button>
+      <button class="src-btn" data-source="bluetooth" onclick="switchSource('bluetooth')">
+        <span class="icon">🔵</span> Bluetooth
+      </button>
+    </div>
+    <button class="btn-secondary" onclick="switchSource('idle')" style="width:100%">⏹ Stop (Idle)</button>
+    <div id="now-playing"></div>
+    <div id="switch-count"></div>
+  </div>
+
+  <!-- ── Playback card ─────────────────────────────────────────────────────── -->
+  <div class="card" id="card-playback">
+    <h2>Playback</h2>
+    <div id="playback-row">
+      <button class="btn-icon" title="Previous"  onclick="playback('previous')">⏮</button>
+      <button class="btn-icon" title="Play"      onclick="playback('play')">▶</button>
+      <button class="btn-icon" title="Pause"     onclick="playback('pause')">⏸</button>
+      <button class="btn-icon" title="Stop"      onclick="playback('stop')">⏹</button>
+      <button class="btn-icon" title="Next"      onclick="playback('next')">⏭</button>
+    </div>
+    <div id="vol-row">
+      <span style="font-size:16px">🔈</span>
+      <input type="range" id="vol-slider" min="0" max="100" value="50"
+             oninput="onVolumeInput(this.value)"
+             onchange="setVolume(this.value)" />
+      <span style="font-size:16px">🔊</span>
+      <span id="vol-label">50</span>
+    </div>
+  </div>
+
+  <!-- ── Config card ───────────────────────────────────────────────────────── -->
+  <div class="card" id="card-config">
+    <h2>Configuration</h2>
+    <div class="field">
+      <label>Default Source</label>
+      <select id="cfg-default-source">
+        <option value="idle">idle</option>
+        <option value="mpd">mpd</option>
+        <option value="airplay">airplay</option>
+        <option value="plexamp">plexamp</option>
+        <option value="bluetooth">bluetooth</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Backlight Timeout (s, 0 = always on)</label>
+      <input type="number" id="cfg-backlight" min="0" max="3600" value="30" />
+    </div>
+    <div class="field">
+      <label>Lock Timeout (s)</label>
+      <input type="number" id="cfg-lock-timeout" min="1" max="15" step="0.5" value="8" />
+    </div>
+    <div class="field">
+      <label>Log Level</label>
+      <select id="cfg-log-level">
+        <option>DEBUG</option>
+        <option selected>INFO</option>
+        <option>WARNING</option>
+        <option>ERROR</option>
+      </select>
+    </div>
+    <button class="btn-primary" onclick="saveConfig()">Save Configuration</button>
+    <div id="config-status"></div>
+  </div>
+
+  <!-- ── OTA card ──────────────────────────────────────────────────────────── -->
+  <div class="card" id="card-ota">
+    <h2>OTA Update</h2>
+    <p style="font-size:12px; color:var(--muted); line-height:1.6">
+      Fetches the latest release from GitHub, applies it, and rolls back
+      automatically on failure.
+    </p>
+    <div id="ota-progress"><div id="ota-bar"></div></div>
+    <div id="ota-status"></div>
+    <button class="btn-warn" id="btn-ota" onclick="triggerOTA()">⬆ Check &amp; Update</button>
+  </div>
+
+  <!-- ── Logs card ─────────────────────────────────────────────────────────── -->
+  <div class="card wide" id="card-logs">
+    <h2>Logs</h2>
+    <div id="log-toolbar">
+      <select id="log-filter" onchange="loadLogs()">
+        <option value="DEBUG">All (DEBUG)</option>
+        <option value="INFO" selected>INFO+</option>
+        <option value="WARNING">WARNING+</option>
+        <option value="ERROR">ERROR+</option>
+      </select>
+      <input type="number" id="log-n" min="10" max="2000" value="100"
+             style="width:70px; background:var(--bg); border:1px solid var(--border);
+                    border-radius:6px; padding:6px 8px; color:var(--text); font-size:12px" />
+      <button class="btn-secondary" onclick="loadLogs()">↻ Refresh</button>
+      <button class="btn-secondary" onclick="clearLogDisplay()">✕ Clear</button>
+      <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:var(--muted); margin-left:auto">
+        <input type="checkbox" id="log-follow" checked /> Auto-scroll
+      </label>
+    </div>
+    <div id="log-scroll"></div>
+  </div>
+
+</main>
+
+<div id="toast"></div>
+
+<script>
+'use strict';
+
+/* ── API base ────────────────────────────────────────────────────────────── */
+const API = '/api/v1';
+
+async function apiFetch(path, opts = {}) {
+  const res = await fetch(API + path, {
+    headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
+    ...opts,
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg = body.detail || `HTTP ${res.status}`;
+    throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
+  }
+  return body;
+}
+
+/* ── Toast ───────────────────────────────────────────────────────────────── */
+let _toastTimer = null;
+function toast(msg, type = 'ok') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = `show ${type}`;
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => el.classList.remove('show'), 3200);
+}
+
+/* ── Source ──────────────────────────────────────────────────────────────── */
+let _currentSource = 'idle';
+
+function updateSourceUI(source, extraInfo = {}) {
+  _currentSource = source;
+  document.querySelectorAll('.src-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.source === source);
+  });
+  const el = document.getElementById('now-playing');
+  el.textContent = source === 'idle' ? 'No active source' : `Active: ${source}`;
+  if (extraInfo.switch_count !== undefined) {
+    document.getElementById('switch-count').textContent =
+      `Switches: ${extraInfo.switch_count}`;
+  }
+}
+
+async function switchSource(source) {
+  // Optimistically mark as switching
+  document.querySelectorAll('.src-btn').forEach(b => b.disabled = true);
+  try {
+    const data = await apiFetch('/source', {
+      method: 'POST',
+      body: JSON.stringify({ source }),
+    });
+    updateSourceUI(data.source, data);
+    toast(`Switched to ${data.source}`, 'ok');
+  } catch (e) {
+    toast(e.message, 'err');
+  } finally {
+    document.querySelectorAll('.src-btn').forEach(b => b.disabled = false);
+  }
+}
+
+async function loadSource() {
+  try {
+    const data = await apiFetch('/source');
+    updateSourceUI(data.source, data);
+  } catch (e) {
+    console.warn('loadSource:', e.message);
+  }
+}
+
+/* ── Playback ────────────────────────────────────────────────────────────── */
+async function playback(action) {
+  try {
+    await apiFetch('/playback', {
+      method: 'POST',
+      body: JSON.stringify({ action }),
+    });
+    toast(`${action}`, 'ok');
+  } catch (e) {
+    toast(e.message, 'warn');
+  }
+}
+
+function onVolumeInput(v) {
+  document.getElementById('vol-label').textContent = v;
+}
+
+let _volDebounce = null;
+function setVolume(v) {
+  clearTimeout(_volDebounce);
+  _volDebounce = setTimeout(async () => {
+    try {
+      await apiFetch('/playback', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'set_volume', value: parseInt(v, 10) }),
+      });
+    } catch (e) {
+      toast(e.message, 'warn');
+    }
+  }, 300);
+}
+
+/* ── Config ──────────────────────────────────────────────────────────────── */
+async function loadConfig() {
+  try {
+    const { config } = await apiFetch('/config');
+    setVal('cfg-default-source', config.default_source);
+    setVal('cfg-backlight',      config.lcd_backlight_timeout);
+    setVal('cfg-lock-timeout',   config.lock_timeout);
+    setVal('cfg-log-level',      config.log_level);
+  } catch (e) {
+    console.warn('loadConfig:', e.message);
+  }
+}
+
+function setVal(id, val) {
+  if (val === undefined || val === null) return;
+  document.getElementById(id).value = val;
+}
+
+async function saveConfig() {
+  const changes = {
+    default_source:        document.getElementById('cfg-default-source').value,
+    lcd_backlight_timeout: parseInt(document.getElementById('cfg-backlight').value, 10),
+    lock_timeout:          parseFloat(document.getElementById('cfg-lock-timeout').value),
+    log_level:             document.getElementById('cfg-log-level').value,
+  };
+  const status = document.getElementById('config-status');
+  status.style.color = 'var(--muted)';
+  status.textContent = 'Saving…';
+  try {
+    await apiFetch('/config', {
+      method: 'PATCH',
+      body: JSON.stringify({ changes }),
+    });
+    status.style.color = 'var(--success)';
+    status.textContent = 'Saved ✓';
+    toast('Configuration saved', 'ok');
+  } catch (e) {
+    status.style.color = 'var(--danger)';
+    status.textContent = e.message;
+    toast(e.message, 'err');
+  }
+}
+
+/* ── Logs ────────────────────────────────────────────────────────────────── */
+function appendLogLine(entry) {
+  const el = document.getElementById('log-scroll');
+  const line = document.createElement('span');
+  line.className = `log-line ${entry.level}`;
+  line.textContent = `${entry.ts}  ${entry.level.padEnd(8)}  ${entry.logger}  ${entry.msg}\n`;
+  el.appendChild(line);
+  if (document.getElementById('log-follow').checked) {
+    el.scrollTop = el.scrollHeight;
+  }
+}
+
+async function loadLogs() {
+  const n     = parseInt(document.getElementById('log-n').value, 10) || 100;
+  const level = document.getElementById('log-filter').value;
+  try {
+    const data = await apiFetch(`/logs?n=${n}&level=${level}`);
+    const el = document.getElementById('log-scroll');
+    el.innerHTML = '';
+    data.entries.forEach(appendLogLine);
+  } catch (e) {
+    console.warn('loadLogs:', e.message);
+  }
+}
+
+function clearLogDisplay() {
+  document.getElementById('log-scroll').innerHTML = '';
+}
+
+/* ── OTA ─────────────────────────────────────────────────────────────────── */
+async function triggerOTA() {
+  const btn    = document.getElementById('btn-ota');
+  const status = document.getElementById('ota-status');
+  const bar    = document.getElementById('ota-bar');
+  const prog   = document.getElementById('ota-progress');
+
+  btn.disabled = true;
+  prog.style.display = 'block';
+  bar.style.width = '10%';
+  status.style.color = 'var(--muted)';
+  status.textContent = 'Checking for update…';
+
+  // Fake progress while waiting (real progress not available over REST)
+  let pct = 10;
+  const ticker = setInterval(() => {
+    pct = Math.min(pct + 5, 85);
+    bar.style.width = pct + '%';
+  }, 400);
+
+  try {
+    // The OTA endpoint is defined by ota_updater.py (not yet wired);
+    // we POST to /api/v1/ota/update and handle the response gracefully.
+    const data = await apiFetch('/ota/update', { method: 'POST' });
+    clearInterval(ticker);
+    bar.style.width = '100%';
+    status.style.color = 'var(--success)';
+    status.textContent = data.message || 'Update complete. Restarting…';
+    toast('OTA update applied', 'ok');
+  } catch (e) {
+    clearInterval(ticker);
+    bar.style.width = '100%';
+    bar.style.background = 'var(--danger)';
+    status.style.color = 'var(--danger)';
+    status.textContent = e.message;
+    toast(e.message, 'err');
+    setTimeout(() => { bar.style.background = ''; prog.style.display = 'none'; }, 3000);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+/* ── WebSocket ───────────────────────────────────────────────────────────── */
+let _ws = null;
+let _wsRetryMs = 1000;
+const _wsMaxRetry = 16000;
+
+function wsConnect() {
+  const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
+  const url = `${protocol}://${location.host}/ws`;
+  _ws = new WebSocket(url);
+
+  _ws.onopen = () => {
+    _wsRetryMs = 1000;
+    setWsDot(true);
+    console.log('WS connected');
+  };
+
+  _ws.onmessage = (e) => {
+    let msg;
+    try { msg = JSON.parse(e.data); } catch { return; }
+
+    if (msg.event === 'connected' || msg.event === 'state_changed') {
+      updateSourceUI(msg.source, msg);
+      if (msg.event === 'state_changed') {
+        toast(`Source → ${msg.source}`, 'ok');
+        loadLogs();
+      }
+    }
+    // ping frames are intentionally ignored
+  };
+
+  _ws.onclose = () => {
+    setWsDot(false);
+    console.log(`WS closed – retrying in ${_wsRetryMs} ms`);
+    setTimeout(wsConnect, _wsRetryMs);
+    _wsRetryMs = Math.min(_wsRetryMs * 2, _wsMaxRetry);
+  };
+
+  _ws.onerror = () => _ws.close();
+}
+
+function setWsDot(connected) {
+  const dot   = document.getElementById('ws-dot');
+  const label = document.getElementById('ws-label');
+  dot.classList.toggle('connected', connected);
+  label.textContent = connected ? 'live' : 'reconnecting…';
+}
+
+/* ── Init ────────────────────────────────────────────────────────────────── */
+(async function init() {
+  await Promise.all([loadSource(), loadConfig(), loadLogs()]);
+  wsConnect();
+})();
+</script>
+</body>
+</html>

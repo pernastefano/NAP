@@ -1,0 +1,13 @@
+[Unit]
+Description=Audio Source: Plexamp Headless
+Documentation=https://github.com/your-org/nap
+
+AllowIsolate=yes
+
+Wants=plexamp.service
+After=plexamp.service
+
+Conflicts=audio-mpd.target audio-airplay.target audio-bluetooth.target
+
+[Install]
+WantedBy=multi-user.target

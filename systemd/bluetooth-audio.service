@@ -1,0 +1,37 @@
+[Unit]
+Description=Bluetooth A2DP Sink (bluealsa – NAP)
+Documentation=https://github.com/arkq/bluez-alsa
+
+PartOf=audio-bluetooth.target
+After=sound.target bluetooth.service dbus.service audio-bluetooth.target
+Requires=bluetooth.service dbus.service
+Wants=bluetooth.service
+
+[Service]
+Type=dbus
+BusName=org.bluealsa
+
+# bluealsa exposes Bluetooth audio devices as ALSA PCM devices.
+# --profile=a2dp-sink  : accept A2DP audio pushed from a phone/tablet
+# --profile=hfp-hf     : optional hands-free profile; remove if not needed
+ExecStart=/usr/bin/bluealsa \
+    --profile=a2dp-sink \
+    --profile=hfp-hf \
+    --codec=AAC \
+    --codec=SBC
+
+# bluealsa-aplay captures the A2DP stream and feeds it to the default ALSA device.
+# Runs as a companion process inside the same service scope.
+ExecStartPost=/usr/bin/bluealsa-aplay --profile-a2dp 00:00:00:00:00:00
+
+Restart=on-failure
+RestartSec=3
+
+# D-Bus access required; must not run in a private namespace that hides the bus.
+PrivateTmp=no
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+
+[Install]
+WantedBy=audio-bluetooth.target

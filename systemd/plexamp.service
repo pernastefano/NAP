@@ -1,0 +1,38 @@
+[Unit]
+Description=Plexamp Headless Player (NAP)
+Documentation=https://plexamp.com
+
+PartOf=audio-plexamp.target
+After=sound.target network-online.target audio-plexamp.target
+
+[Service]
+Type=simple
+
+# Plexamp headless runs under a dedicated unprivileged user.
+# Create with: useradd --system --home /opt/plexamp --shell /usr/sbin/nologin plexamp
+User=plexamp
+Group=audio
+
+WorkingDirectory=/opt/plexamp
+
+# Plexamp headless entry point installed by the official tarball.
+ExecStart=/usr/bin/node /opt/plexamp/js/index.js
+
+# Plexamp writes session data to its working directory.
+StateDirectory=plexamp
+Environment=NODE_ENV=production
+Environment=HOME=/opt/plexamp
+
+Restart=on-failure
+RestartSec=5
+# Give the process time to authenticate before treating it as failed.
+TimeoutStartSec=30
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/opt/plexamp
+
+[Install]
+WantedBy=audio-plexamp.target

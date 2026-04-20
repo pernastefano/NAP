@@ -1,0 +1,17 @@
+[Unit]
+Description=Audio Source: MPD (FLAC Web Radio)
+Documentation=https://github.com/your-org/nap
+
+# Allow systemctl isolate audio-mpd.target
+AllowIsolate=yes
+
+# Pull in the MPD service when this target is activated
+Wants=mpd.service
+After=mpd.service
+
+# Mutually exclusive with other audio targets.
+# systemd stops conflicting units before starting this target.
+Conflicts=audio-airplay.target audio-plexamp.target audio-bluetooth.target
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,13 @@
+[Unit]
+Description=Audio Source: Bluetooth A2DP Sink
+Documentation=https://github.com/your-org/nap
+
+AllowIsolate=yes
+
+Wants=bluetooth-audio.service
+After=bluetooth-audio.service
+
+Conflicts=audio-mpd.target audio-airplay.target audio-plexamp.target
+
+[Install]
+WantedBy=multi-user.target

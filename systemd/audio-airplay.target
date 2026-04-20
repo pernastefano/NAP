@@ -1,0 +1,13 @@
+[Unit]
+Description=Audio Source: AirPlay (shairport-sync)
+Documentation=https://github.com/your-org/nap
+
+AllowIsolate=yes
+
+Wants=shairport-sync.service
+After=shairport-sync.service
+
+Conflicts=audio-mpd.target audio-plexamp.target audio-bluetooth.target
+
+[Install]
+WantedBy=multi-user.target
