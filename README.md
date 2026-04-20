@@ -144,6 +144,10 @@ NAP/
 │   └── test_audio_controller.py  # 14 unit tests (no root, no hardware required)
 ├── web/
 │   └── index.html                # Single-file Web UI (HTML + CSS + JS)
+├── docs/
+│   ├── INSTALL.md                # Complete software installation guide
+│   └── HARDWARE.md               # Hardware assembly, GPIO wiring, testing
+├── LICENSE
 └── SPEC.md                       # Product specification
 ```
 
@@ -163,7 +167,7 @@ NAP/
 | MicroSD / SSD | 16 GB minimum; Class 10 / A1 or USB SSD for reliability |
 | Power supply | Official Raspberry Pi 4 USB-C PSU (5.1 V / 3 A) |
 
-Full pin-level wiring is documented in [config/wiring_diagram.txt](config/wiring_diagram.txt).
+Full assembly instructions, circuit diagrams, and troubleshooting are in **[docs/HARDWARE.md](docs/HARDWARE.md)**. Machine-readable pin assignments are in [config/wiring.conf](config/wiring.conf) and ASCII diagrams in [config/wiring_diagram.txt](config/wiring_diagram.txt).
 
 **GPIO Summary (BCM numbering):**
 
@@ -186,6 +190,8 @@ Full pin-level wiring is documented in [config/wiring_diagram.txt](config/wiring
 
 ## Installation
 
+> For a complete step-by-step guide including OS flashing, interface setup, and Plexamp authentication, see **[docs/INSTALL.md](docs/INSTALL.md)**.
+
 ### Prerequisites
 
 - Raspberry Pi 4 running Raspberry Pi OS **Bookworm** (64-bit recommended)
@@ -207,6 +213,7 @@ The installer is fully idempotent — safe to run multiple times. It performs 14
 3. Directory structure (`/opt/nap`, `/etc/nap`, `/var/log/nap`, `/var/lib/nap`)
 4. Application code sync to `/opt/nap`
 5. Python virtual environment at `/opt/nap/venv` with all dependencies
+5b. Plexamp Headless — Node.js (LTS) + binary download from `plexamp.plex.tv`
 6. Default configuration at `/etc/nap/config.json` (never overwrites existing)
 7. systemd unit installation (4 targets + 4 audio services + `nap-backend.service`)
 8. Minimal `sudoers` rule (only `systemctl isolate` + `systemctl restart nap-backend`)
@@ -395,6 +402,19 @@ The test suite patches `_isolate` and `_verify_active` so systemd is never calle
 ## License
 
 MIT License — see [LICENSE](LICENSE) for details.
+
+---
+
+## Documentation
+
+| Guide | Description |
+|---|---|
+| [docs/INSTALL.md](docs/INSTALL.md) | Complete software installation guide (OS flash → first boot → verify) |
+| [docs/HARDWARE.md](docs/HARDWARE.md) | Hardware assembly, GPIO wiring table, RC filters, testing scripts, troubleshooting |
+| [config/wiring.conf](config/wiring.conf) | Machine-readable GPIO pin assignments (INI format) |
+| [config/wiring_diagram.txt](config/wiring_diagram.txt) | ASCII circuit diagrams for all subsystems |
+| [config/asound.conf](config/asound.conf) | Annotated ALSA configuration |
+| [SPEC.md](SPEC.md) | Product specification |
 
 ---
 
