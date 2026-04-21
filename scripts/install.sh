@@ -368,9 +368,20 @@ info "--- Step 4: Application code ---"
 if [[ "$REPO_ROOT" != "$INSTALL_DIR" ]]; then
     # Running installer from a development checkout; sync to INSTALL_DIR.
     info "Syncing $REPO_ROOT → $INSTALL_DIR"
-    rsync -a --exclude='.git' --exclude='__pycache__' --exclude='*.pyc' \
-        --exclude='.pytest_cache' --exclude='tests/' --exclude='*.egg-info' \
-        "$REPO_ROOT/" "$INSTALL_DIR/"
+    # Exclude build/cache artefacts.  .git is intentionally NOT excluded so that
+    # /opt/nap remains a valid git repository and OTA updates work.
+    # On re-installs, preserve the existing .git to avoid overwriting OTA history.
+    if [[ -d "$INSTALL_DIR/.git" ]]; then
+        rsync -a --exclude='.git' --exclude='__pycache__' --exclude='*.pyc' \
+            --exclude='.pytest_cache' --exclude='tests/' --exclude='*.egg-info' \
+            "$REPO_ROOT/" "$INSTALL_DIR/"
+        info "Existing .git preserved (re-install / repair run)."
+    else
+        rsync -a --exclude='__pycache__' --exclude='*.pyc' \
+            --exclude='.pytest_cache' --exclude='tests/' --exclude='*.egg-info' \
+            "$REPO_ROOT/" "$INSTALL_DIR/"
+        info "Copied .git to $INSTALL_DIR (required for OTA)."
+    fi
     chown -R "$NAP_USER:$NAP_GROUP" "$INSTALL_DIR"
     success "Code synced."
 else

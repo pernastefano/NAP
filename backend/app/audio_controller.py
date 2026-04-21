@@ -83,7 +83,8 @@ _SYSTEMD_VERIFY_TIMEOUT: float = 10.0
 # How long we wait to acquire the ALSA lock before rejecting a switch request.
 _LOCK_TIMEOUT: float = 8.0
 
-# systemctl command path – explicit so PATH manipulation cannot hijack it.
+# Absolute paths – explicit so PATH manipulation cannot hijack them.
+_SUDO      = "/usr/bin/sudo"
 _SYSTEMCTL = "/bin/systemctl"
 
 
@@ -390,7 +391,7 @@ def _isolate(target: str) -> None:
     logger.debug("audio_controller: systemctl isolate %r", target)
     try:
         result = subprocess.run(
-            [_SYSTEMCTL, "isolate", target],
+            [_SUDO, _SYSTEMCTL, "isolate", target],
             capture_output=True,
             timeout=30,  # systemd should never take longer than this
         )
