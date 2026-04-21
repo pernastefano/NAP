@@ -344,7 +344,7 @@ success "Service accounts ready."
 # ──────────────────────────────────────────────────────────────────────────────
 info "--- Step 3: Directory structure ---"
 ensure_dir "$INSTALL_DIR"          "$NAP_USER:$NAP_GROUP"  "755"
-ensure_dir "$CONFIG_DIR"           "root:$NAP_GROUP"       "750"
+ensure_dir "$CONFIG_DIR"           "$NAP_USER:$NAP_GROUP"  "750"
 ensure_dir "$LOG_DIR"              "$NAP_USER:$NAP_GROUP"  "750"
 ensure_dir "$LIB_DIR"              "$NAP_USER:$NAP_GROUP"  "755"
 ensure_dir "$LIB_DIR/ota"          "$NAP_USER:$NAP_GROUP"  "755"
@@ -523,7 +523,7 @@ if [[ ! -f "$DEFAULT_CONFIG" ]]; then
   "log_max_lines": 500
 }
 EOF
-    chown "root:$NAP_GROUP" "$DEFAULT_CONFIG"
+    chown "$NAP_USER:$NAP_GROUP" "$DEFAULT_CONFIG"
     chmod 640 "$DEFAULT_CONFIG"
     success "Default config written."
 else
