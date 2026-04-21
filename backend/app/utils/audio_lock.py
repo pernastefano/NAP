@@ -45,7 +45,7 @@ logger = logging.getLogger(__name__)
 # Public constants
 # ──────────────────────────────────────────────────────────────────────────────
 
-LOCK_FILE: Path = Path("/var/run/audio.lock")
+LOCK_FILE: Path = Path("/run/audio.lock")
 
 # Maximum time (seconds) any caller will wait before giving up.
 # Individual callers may pass a shorter timeout; they may never pass a longer

@@ -75,7 +75,7 @@ NAP_GROUP="nap"
 INSTALL_DIR="/opt/nap"
 CONFIG_DIR="/etc/nap"
 LOG_DIR="/var/log/nap"
-RUN_DIR="/var/run/nap"
+RUN_DIR="/run/nap"
 LIB_DIR="/var/lib/nap"
 
 PYTHON="python3"
@@ -200,7 +200,8 @@ ensure_user() {
     fi
     # Idempotently add supplementary groups
     if [[ -n "$groups" ]]; then
-        for grp in $(echo "$groups" | tr ',' ' '); do
+        IFS=',' read -ra _grps <<< "$groups"
+        for grp in "${_grps[@]}"; do
             if getent group "$grp" &>/dev/null; then
                 usermod -aG "$grp" "$user" 2>/dev/null || true
             else
@@ -359,12 +360,12 @@ ensure_dir "$LIB_DIR/ota"          "$NAP_USER:$NAP_GROUP"  "755"
 ensure_dir "/opt/plexamp"          "plexamp:audio"         "755"
 success "Directories ready."
 
-# /var/run/nap is a tmpfs mount on boot – use systemd-tmpfiles
+# /run/nap is a tmpfs mount on boot – use systemd-tmpfiles
 info "Configuring tmpfiles for $RUN_DIR"
 cat > "$TMPFILES_CONF" <<EOF
 # NAP runtime directory (recreated on boot)
 d $RUN_DIR          0755 $NAP_USER $NAP_GROUP -
-f /var/run/audio.lock 0660 $NAP_USER audio       -
+f /run/audio.lock 0660 $NAP_USER audio       -
 EOF
 systemd-tmpfiles --create "$TMPFILES_CONF"
 success "tmpfiles configured."
@@ -612,7 +613,7 @@ NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=strict
 ProtectHome=yes
-ReadWritePaths=$CONFIG_DIR $LOG_DIR $LIB_DIR $INSTALL_DIR $RUN_DIR /var/run/audio.lock
+ReadWritePaths=$CONFIG_DIR $LOG_DIR $LIB_DIR $INSTALL_DIR $RUN_DIR /run/audio.lock
 
 # Journal
 StandardOutput=journal
@@ -686,19 +687,19 @@ SUBSYSTEM=="bcm2835-gpiomem",  GROUP="gpio", MODE="0660"
 SUBSYSTEM=="gpio",             GROUP="gpio", MODE="0660"
 
 # Audio lock file permissions on boot (complement to tmpfiles.d)
-ACTION=="add", SUBSYSTEM=="platform", RUN+="/bin/chown $NAP_USER:audio /var/run/audio.lock"
+ACTION=="add", SUBSYSTEM=="platform", RUN+="/bin/chown $NAP_USER:audio /run/audio.lock"
 EOF
 udevadm control --reload-rules 2>/dev/null || true
 udevadm trigger          2>/dev/null || true
 success "udev rules installed."
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Step 10 – /var/run/audio.lock permissions
+# Step 10 – /run/audio.lock permissions
 # ──────────────────────────────────────────────────────────────────────────────
 info "--- Step 10: Audio lock file ---"
 # Create lock file if it does not yet exist (tmpfiles.d will recreate it on
 # every boot; this handles the first run before the next reboot).
-LOCK_FILE="/var/run/audio.lock"
+LOCK_FILE="/run/audio.lock"
 if [[ ! -f "$LOCK_FILE" ]]; then
     touch "$LOCK_FILE"
     success "Created $LOCK_FILE"
