@@ -637,35 +637,18 @@ success "systemd daemon reloaded."
 # The backend service runs with NoNewPrivileges=yes, which prevents sudo from
 # escalating privileges.  polkit authorises the D-Bus calls that systemctl
 # makes internally, so no privilege escalation is required.
+#
+# The rule lives in config/10-nap.rules in the repo so it is version-controlled
+# and updated on every installer run (install_file compares content hashes).
 info "--- Step 8: polkit rules ---"
 mkdir -p /etc/polkit-1/rules.d
-if [[ ! -f "$POLKIT_RULES_FILE" ]]; then
-    cat > "$POLKIT_RULES_FILE" <<'EOF'
-// NAP – allow the nap service account to isolate audio systemd targets.
-// systemctl communicates with systemd over D-Bus; polkit governs that path,
-// so no sudo / setuid escalation is needed (compatible with NoNewPrivileges).
-polkit.addRule(function(action, subject) {
-    var ALLOWED_UNITS = [
-        "audio-mpd.target",
-        "audio-airplay.target",
-        "audio-plexamp.target",
-        "audio-bluetooth.target",
-        "multi-user.target",
-    ];
-    if (action.id === "org.freedesktop.systemd1.manage-units" &&
-            subject.user === "nap") {
-        var unit = action.lookup("unit");
-        var verb = action.lookup("verb");
-        if (verb === "isolate" && ALLOWED_UNITS.indexOf(unit) !== -1) {
-            return polkit.Result.YES;
-        }
-    }
-});
-EOF
-    chmod 644 "$POLKIT_RULES_FILE"
-    success "polkit rules written to $POLKIT_RULES_FILE"
+install_file "$REPO_ROOT/config/10-nap.rules" "$POLKIT_RULES_FILE" "644"
+# Reload polkit so the new/updated rule takes effect immediately.
+if systemctl is-active --quiet polkit 2>/dev/null; then
+    systemctl reload-or-restart polkit
+    success "polkit reloaded."
 else
-    success "Already exists (not overwriting): $POLKIT_RULES_FILE"
+    warn "polkit service not active – rule will apply on next polkitd start."
 fi
 
 # ──────────────────────────────────────────────────────────────────────────────

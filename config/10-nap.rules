@@ -1,0 +1,23 @@
+// NAP – allow the nap service account to isolate audio systemd targets.
+// systemctl communicates with systemd over D-Bus; polkit governs that path,
+// so no sudo / setuid escalation is needed (compatible with NoNewPrivileges).
+//
+// Installed to: /etc/polkit-1/rules.d/10-nap.rules
+// Managed by:   scripts/install.sh  (Step 8)
+polkit.addRule(function(action, subject) {
+    var ALLOWED_UNITS = [
+        "audio-mpd.target",
+        "audio-airplay.target",
+        "audio-plexamp.target",
+        "audio-bluetooth.target",
+        "multi-user.target",
+    ];
+    if (action.id === "org.freedesktop.systemd1.manage-units" &&
+            subject.user === "nap") {
+        var unit = action.lookup("unit");
+        var verb = action.lookup("verb");
+        if (verb === "isolate" && ALLOWED_UNITS.indexOf(unit) !== -1) {
+            return polkit.Result.YES;
+        }
+    }
+});
