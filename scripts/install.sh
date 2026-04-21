@@ -107,6 +107,81 @@ apt_install() {
 }
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Helper: build and install BlueALSA from source.
+#
+# BlueALSA was removed from Raspberry Pi OS Bookworm's default repos. We build
+# the latest release from GitHub, which supports Bookworm / BlueZ 5.66+ natively.
+#
+# Binary names changed in v4.4.0:
+#   bluealsa  →  bluealsad   (daemon)
+#   bluealsa-cli  →  bluealsactl  (control utility)
+#   bluealsa-aplay is unchanged.
+#
+# After installation a compat symlink /usr/bin/bluealsa → bluealsad is created
+# so any scripts that reference the old name continue to work.
+#
+# Idempotent: skips the entire build when bluealsad (or the legacy bluealsa)
+# binary is already present in PATH.
+# ──────────────────────────────────────────────────────────────────────────────
+build_bluealsa() {
+    if command -v bluealsad &>/dev/null || \
+       { command -v bluealsa &>/dev/null && [[ ! -L "$(command -v bluealsa)" ]]; }; then
+        success "BlueALSA already installed – skipping build."
+        return 0
+    fi
+
+    info "BlueALSA not in apt repos for this OS – building from source."
+    info "  Source : https://github.com/arkq/bluez-alsa (latest HEAD)"
+    info "  This takes 2–5 minutes on a Raspberry Pi 4."
+
+    local BUILD_DIR
+    BUILD_DIR="$(mktemp -d /tmp/bluez-alsa-build.XXXXXX)"
+    # Always clean up the temp build tree, even on error.
+    # shellcheck disable=SC2064
+    trap "rm -rf '$BUILD_DIR'" RETURN
+
+    # ── Build-time dependencies ───────────────────────────────────────────────
+    # build-essential/gcc are already in BASE_PACKAGES; listed here for clarity.
+    apt_install \
+        git automake libtool pkg-config python3-docutils \
+        libasound2-dev libbluetooth-dev libdbus-1-dev \
+        libglib2.0-dev libsbc-dev
+
+    # ── Clone (shallow – we only need HEAD) ───────────────────────────────────
+    info "Cloning bluez-alsa …"
+    git clone --depth 1 https://github.com/arkq/bluez-alsa.git "$BUILD_DIR"
+
+    pushd "$BUILD_DIR" > /dev/null
+
+    autoreconf --install --force
+
+    mkdir _build && cd _build
+    # Configuration notes:
+    #   --enable-faststream : royalty-free Google FastStream codec (better
+    #                         latency than SBC, no AAC license needed)
+    #   --enable-upower     : report battery level to connected BT devices
+    #   No --enable-systemd : NAP owns its own service unit (bluetooth-audio.service)
+    ../configure \
+        --enable-faststream \
+        --enable-upower \
+        --with-alsaplugindir="$(pkg-config --variable=libdir alsa)/alsa-lib"
+
+    make -j"$(nproc)" CFLAGS="-O2 -s"
+    make install
+    ldconfig
+
+    popd > /dev/null
+
+    # Create compat symlink so scripts referencing the old 'bluealsa' name work.
+    if command -v bluealsad &>/dev/null && [[ ! -e /usr/bin/bluealsa ]]; then
+        ln -sf /usr/bin/bluealsad /usr/bin/bluealsa
+        info "Created compat symlink /usr/bin/bluealsa → bluealsad"
+    fi
+
+    success "BlueALSA built and installed."
+}
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Helper: create a system user if it doesn't exist
 # ──────────────────────────────────────────────────────────────────────────────
 ensure_user() {
@@ -200,7 +275,6 @@ if [[ $OPT_NO_APT -eq 0 ]]; then
         mpd mpc
         shairport-sync
         bluez bluez-tools
-        bluealsa bluealsa-utils
         # System tools required by the backend
         git
         python3 python3-pip python3-venv python3-dev
@@ -223,6 +297,10 @@ if [[ $OPT_NO_APT -eq 0 ]]; then
     )
 
     apt_install "${BASE_PACKAGES[@]}"
+
+    # BlueALSA was removed from Raspberry Pi OS Bookworm's default repos.
+    # Build from source if not already installed.
+    build_bluealsa
 
     if [[ $OPT_DEV -eq 0 ]]; then
         apt_install "${HARDWARE_PACKAGES[@]}"

@@ -1,5 +1,5 @@
 [Unit]
-Description=Bluetooth A2DP Sink (bluealsa – NAP)
+Description=Bluetooth A2DP Sink (bluealsad – NAP)
 Documentation=https://github.com/arkq/bluez-alsa
 
 PartOf=audio-bluetooth.target
@@ -11,17 +11,20 @@ Wants=bluetooth.service
 Type=dbus
 BusName=org.bluealsa
 
-# bluealsa exposes Bluetooth audio devices as ALSA PCM devices.
-# --profile=a2dp-sink  : accept A2DP audio pushed from a phone/tablet
-# --profile=hfp-hf     : optional hands-free profile; remove if not needed
-ExecStart=/usr/bin/bluealsa \
-    --profile=a2dp-sink \
-    --profile=hfp-hf \
-    --codec=AAC \
-    --codec=SBC
+# bluealsad exposes Bluetooth audio devices as ALSA PCM devices.
+# Built from source (github.com/arkq/bluez-alsa) – not available in
+# Raspberry Pi OS Bookworm default repos.
+#
+# -S               : log to syslog instead of stderr
+# -p a2dp-sink     : accept A2DP audio pushed from a phone/tablet
+# -p hfp-hf        : hands-free profile; remove if not needed
+# Codecs advertised: SBC (mandatory) + FastStream (built-in, royalty-free)
+ExecStart=/usr/bin/bluealsad -S \
+    -p a2dp-sink \
+    -p hfp-hf
 
 # bluealsa-aplay captures the A2DP stream and feeds it to the default ALSA device.
-# Runs as a companion process inside the same service scope.
+# 00:00:00:00:00:00 = accept audio from any paired device.
 ExecStartPost=/usr/bin/bluealsa-aplay --profile-a2dp 00:00:00:00:00:00
 
 Restart=on-failure
