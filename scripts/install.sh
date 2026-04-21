@@ -81,7 +81,7 @@ LIB_DIR="/var/lib/nap"
 PYTHON="python3"
 PIP="pip3"
 SYSTEMD_DIR="/etc/systemd/system"
-SUDOERS_FILE="/etc/sudoers.d/nap"
+POLKIT_RULES_FILE="/etc/polkit-1/rules.d/10-nap.rules"
 LOGROTATE_FILE="/etc/logrotate.d/nap"
 UDEV_RULES_FILE="/etc/udev/rules.d/99-nap.rules"
 TMPFILES_CONF="/etc/tmpfiles.d/nap.conf"
@@ -286,6 +286,8 @@ if [[ $OPT_NO_APT -eq 0 ]]; then
         avahi-daemon avahi-utils
         # For smbus2 / RPLCD
         python3-smbus
+        # polkit – D-Bus authorisation for systemctl isolate without sudo
+        policykit-1
         # Misc
         curl wget jq
     )
@@ -590,7 +592,7 @@ ExecStart=$VENV_DIR/bin/uvicorn backend.app.main:app \\
     --no-access-log
 
 # Allow the service to call systemctl for source switching.
-# The nap sudoers rule (Step 8) grants the necessary permissions.
+# The nap polkit rule (Step 8) grants the necessary permissions.
 Environment=PYTHONPATH=$INSTALL_DIR
 Environment=NAP_CONFIG_DIR=$CONFIG_DIR
 
@@ -623,29 +625,41 @@ systemctl daemon-reload
 success "systemd daemon reloaded."
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Step 8 – Permissions / sudoers
+# Step 8 – polkit rules (authorise systemctl isolate via D-Bus)
 # ──────────────────────────────────────────────────────────────────────────────
-info "--- Step 8: sudoers ---"
-# The nap user needs to call systemctl to isolate audio targets and to
-# restart itself.  We grant the minimum required commands only.
-cat > "$SUDOERS_FILE" <<EOF
-# NAP – allow the nap service account to switch audio targets and restart
-# the backend service via systemctl.  No password prompt.
-$NAP_USER ALL=(ALL) NOPASSWD: /bin/systemctl isolate audio-mpd.target
-$NAP_USER ALL=(ALL) NOPASSWD: /bin/systemctl isolate audio-airplay.target
-$NAP_USER ALL=(ALL) NOPASSWD: /bin/systemctl isolate audio-plexamp.target
-$NAP_USER ALL=(ALL) NOPASSWD: /bin/systemctl isolate audio-bluetooth.target
-$NAP_USER ALL=(ALL) NOPASSWD: /bin/systemctl isolate multi-user.target
-$NAP_USER ALL=(ALL) NOPASSWD: /bin/systemctl is-active *
-$NAP_USER ALL=(ALL) NOPASSWD: /bin/systemctl restart nap-backend.service
+# The backend service runs with NoNewPrivileges=yes, which prevents sudo from
+# escalating privileges.  polkit authorises the D-Bus calls that systemctl
+# makes internally, so no privilege escalation is required.
+info "--- Step 8: polkit rules ---"
+mkdir -p /etc/polkit-1/rules.d
+if [[ ! -f "$POLKIT_RULES_FILE" ]]; then
+    cat > "$POLKIT_RULES_FILE" <<'EOF'
+// NAP – allow the nap service account to isolate audio systemd targets.
+// systemctl communicates with systemd over D-Bus; polkit governs that path,
+// so no sudo / setuid escalation is needed (compatible with NoNewPrivileges).
+polkit.addRule(function(action, subject) {
+    var ALLOWED_UNITS = [
+        "audio-mpd.target",
+        "audio-airplay.target",
+        "audio-plexamp.target",
+        "audio-bluetooth.target",
+        "multi-user.target",
+    ];
+    if (action.id === "org.freedesktop.systemd1.manage-units" &&
+            subject.user === "nap") {
+        var unit = action.lookup("unit");
+        var verb = action.lookup("verb");
+        if (verb === "isolate" && ALLOWED_UNITS.indexOf(unit) !== -1) {
+            return polkit.Result.YES;
+        }
+    }
+});
 EOF
-chmod 440 "$SUDOERS_FILE"
-# Validate before leaving the file in place
-if ! visudo -cf "$SUDOERS_FILE"; then
-    rm -f "$SUDOERS_FILE"
-    die "sudoers file failed validation – removed.  Check /etc/sudoers.d/ manually."
+    chmod 644 "$POLKIT_RULES_FILE"
+    success "polkit rules written to $POLKIT_RULES_FILE"
+else
+    success "Already exists (not overwriting): $POLKIT_RULES_FILE"
 fi
-success "sudoers configured."
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Step 9 – udev rules (GPIO / IR / I2C)
