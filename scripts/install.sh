@@ -286,11 +286,17 @@ if [[ $OPT_NO_APT -eq 0 ]]; then
         avahi-daemon avahi-utils
         # For smbus2 / RPLCD
         python3-smbus
-        # polkit – D-Bus authorisation for systemctl isolate without sudo
-        policykit-1
         # Misc
         curl wget jq
     )
+
+    # polkit – D-Bus authorisation for systemctl isolate without sudo.
+    # Bookworm+ split policykit-1 into polkitd + pkexec; use whichever is present.
+    if apt-cache show polkitd &>/dev/null 2>&1; then
+        BASE_PACKAGES+=(polkitd)        # Bookworm / newer RPi OS
+    else
+        BASE_PACKAGES+=(policykit-1)    # Bullseye / older RPi OS
+    fi
 
     # On Bookworm, raspi-gpio and libraspberrypi-bin were superseded by the
     # raspi-utils-* split packages.  Detect which set is available and use it.
