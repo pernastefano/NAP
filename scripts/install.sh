@@ -643,12 +643,16 @@ success "systemd daemon reloaded."
 info "--- Step 8: polkit rules ---"
 mkdir -p /etc/polkit-1/rules.d
 install_file "$REPO_ROOT/config/10-nap.rules" "$POLKIT_RULES_FILE" "644"
-# Reload polkit so the new/updated rule takes effect immediately.
-if systemctl is-active --quiet polkit 2>/dev/null; then
-    systemctl reload-or-restart polkit
-    success "polkit reloaded."
+# Signal polkitd to reload its rules.  polkit is usually D-Bus-activated so
+# `systemctl is-active polkit` returns inactive even when it works; try reload
+# unconditionally, then fall back to restart, then accept that it will pick up
+# the file automatically via inotify (or on next D-Bus activation).
+if systemctl reload polkit 2>/dev/null; then
+    success "polkit rules reloaded (SIGHUP)."
+elif systemctl restart polkit 2>/dev/null; then
+    success "polkit restarted."
 else
-    warn "polkit service not active – rule will apply on next polkitd start."
+    warn "Could not signal polkitd – rules will apply on next D-Bus activation (no action needed on systemd hosts)."
 fi
 
 # ──────────────────────────────────────────────────────────────────────────────

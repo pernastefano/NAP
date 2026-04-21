@@ -12,12 +12,26 @@ polkit.addRule(function(action, subject) {
         "audio-bluetooth.target",
         "multi-user.target",
     ];
-    if (action.id === "org.freedesktop.systemd1.manage-units" &&
-            subject.user === "nap") {
-        var unit = action.lookup("unit");
-        var verb = action.lookup("verb");
-        if (verb === "isolate" && ALLOWED_UNITS.indexOf(unit) !== -1) {
-            return polkit.Result.YES;
-        }
+
+    if (action.id !== "org.freedesktop.systemd1.manage-units") {
+        return;
+    }
+
+    // Match the nap service account by name *or* by group membership so that
+    // developers who `sudo usermod -aG nap $USER` can test without the full
+    // installer.
+    if (subject.user !== "nap" && !subject.isInGroup("nap")) {
+        return;
+    }
+
+    var unit = action.lookup("unit") || "";
+    var verb = action.lookup("verb") || "";
+
+    // systemd passes verb="isolate" for `systemctl isolate`, but some builds
+    // surface the StartUnit mode as "start".  Accept both so the rule is
+    // version-agnostic.
+    if ((verb === "isolate" || verb === "start") &&
+            ALLOWED_UNITS.indexOf(unit) !== -1) {
+        return polkit.Result.YES;
     }
 });
