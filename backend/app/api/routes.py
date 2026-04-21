@@ -7,6 +7,8 @@ Routers are registered in main.py via app.include_router().
 from __future__ import annotations
 
 import logging
+import re
+import subprocess
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, status
@@ -192,3 +194,39 @@ def get_logs(
         for e in recent
     ]
     return LogsResponse(count=len(entries), entries=entries)
+
+
+# ── audio devices ─────────────────────────────────────────────────────────────
+
+@router.get("/audio-devices", tags=["system"])
+def list_audio_devices() -> dict:
+    """Return the list of available ALSA playback devices.
+
+    Always includes ``default`` as the first entry.  The rest are discovered
+    by running ``aplay -l`` and parsing its output.  If ``aplay`` is not
+    available the endpoint still returns successfully with only ``default``.
+    """
+    devices: list[dict[str, str]] = [
+        {"value": "default", "label": "default (system default)"},
+    ]
+    try:
+        result = subprocess.run(
+            ["aplay", "-l"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        for line in result.stdout.splitlines():
+            m = re.match(
+                r"^card (\d+): \S+ \[([^\]]+)\], device (\d+): [^\[]+\[([^\]]+)\]",
+                line,
+            )
+            if m:
+                card, card_name, dev, dev_name = m.groups()
+                value = f"hw:{card},{dev}"
+                label = f"{card_name} – {dev_name} ({value})"
+                devices.append({"value": value, "label": label})
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("list_audio_devices: aplay -l failed: %s", exc)
+
+    return {"devices": devices}

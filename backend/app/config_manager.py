@@ -49,6 +49,7 @@ class NAPConfig(BaseSettings):
 
     # ── audio ──────────────────────────────────────────────────────────────────
     default_source: str = Field("idle", description="Source activated on boot.")
+    audio_output_device: str = Field("default", description="ALSA output device (e.g. 'default', 'hw:0,0', 'hw:1,0').")
     lock_timeout: float = Field(8.0, ge=0.1, le=15.0, description="ALSA lock timeout (s).")
     systemd_verify_timeout: float = Field(10.0, ge=1.0, le=60.0)
 

@@ -313,6 +313,12 @@
       </select>
     </div>
     <div class="field">
+      <label>Audio Output Device</label>
+      <select id="cfg-audio-device">
+        <option value="default">default (system default)</option>
+      </select>
+    </div>
+    <div class="field">
       <label>Backlight Timeout (s, 0 = always on)</label>
       <input type="number" id="cfg-backlight" min="0" max="3600" value="30" />
     </div>
@@ -475,6 +481,31 @@ function setVolume(v) {
 }
 
 /* ── Config ──────────────────────────────────────────────────────────────── */
+async function loadAudioDevices(selectedValue) {
+  try {
+    const { devices } = await apiFetch('/audio-devices');
+    const sel = document.getElementById('cfg-audio-device');
+    sel.innerHTML = '';
+    devices.forEach(d => {
+      const opt = document.createElement('option');
+      opt.value = d.value;
+      opt.textContent = d.label;
+      if (d.value === selectedValue) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    // If no device matched the saved value, add it as-is so it isn't lost
+    if (selectedValue && !devices.find(d => d.value === selectedValue)) {
+      const opt = document.createElement('option');
+      opt.value = selectedValue;
+      opt.textContent = selectedValue;
+      opt.selected = true;
+      sel.insertBefore(opt, sel.firstChild);
+    }
+  } catch (e) {
+    console.warn('loadAudioDevices:', e.message);
+  }
+}
+
 async function loadConfig() {
   try {
     const { config } = await apiFetch('/config');
@@ -482,6 +513,7 @@ async function loadConfig() {
     setVal('cfg-backlight',      config.lcd_backlight_timeout);
     setVal('cfg-lock-timeout',   config.lock_timeout);
     setVal('cfg-log-level',      config.log_level);
+    await loadAudioDevices(config.audio_output_device || 'default');
   } catch (e) {
     console.warn('loadConfig:', e.message);
   }
@@ -495,6 +527,7 @@ function setVal(id, val) {
 async function saveConfig() {
   const changes = {
     default_source:        document.getElementById('cfg-default-source').value,
+    audio_output_device:   document.getElementById('cfg-audio-device').value,
     lcd_backlight_timeout: parseInt(document.getElementById('cfg-backlight').value, 10),
     lock_timeout:          parseFloat(document.getElementById('cfg-lock-timeout').value),
     log_level:             document.getElementById('cfg-log-level').value,
