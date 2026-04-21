@@ -290,11 +290,15 @@ if [[ $OPT_NO_APT -eq 0 ]]; then
         curl wget jq
     )
 
-    HARDWARE_PACKAGES=(
-        # RPi-specific GPIO and I2C headers
-        raspi-gpio
-        libraspberrypi-bin
-    )
+    # On Bookworm, raspi-gpio and libraspberrypi-bin were superseded by the
+    # raspi-utils-* split packages.  Detect which set is available and use it.
+    if apt-cache show raspi-utils-core &>/dev/null 2>&1; then
+        # Bookworm / newer RPi OS
+        HARDWARE_PACKAGES=(raspi-utils-core raspi-utils-dt)
+    else
+        # Bullseye / older RPi OS
+        HARDWARE_PACKAGES=(raspi-gpio libraspberrypi-bin)
+    fi
 
     apt_install "${BASE_PACKAGES[@]}"
 
